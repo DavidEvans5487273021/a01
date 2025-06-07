@@ -13,10 +13,8 @@ jobs:
           echo "Generated at: $(date)" > public-data/result.txt
           echo "Your string data here" >> public-data/result.txt
       
-      - name: Commit to repository
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add public-data/
-          git commit -m "Update public data [skip ci]" || exit 0
-          git push
+      - name: Commit and push changes
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: 'Update public data [skip ci]'
+          file_pattern: 'public-data/*'
