@@ -1,34 +1,59 @@
-name: Store Public Data
-on:
-    workflow_dispatch:
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+name: Create Public Gist
+on: [push]
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  create-gist:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Generate data
+      - name: Create Public Gist with Data
         run: |
-          mkdir -p _site
-          echo "Generated at: $(date)" > _site/api.txt
-          echo "Your string data here" >> _site/api.txt
-      
-      - name: Setup Pages
-        uses: actions/configure-pages@v4
-        
-      - name: Upload artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: '_site'
+          # Generate your data
+          DATA="Generated at: $(date)
+Build number: ${{ github.run_number }}
+Commit SHA: ${{ github.sha }}
+Repository: ${{ github.repository }}
+Branch: ${{ github.ref_name }}
+
+Your string data content goes here
+Additional data line 1
+Additional data line 2"
           
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
+          # Create public gist
+          echo "🔄 Creating public gist..."
+          GIST_RESPONSE=$(curl -s -X POST \
+            -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/gists \
+            -d '{
+              "description": "Auto-generated data from GitHub Action - '"$(date)"'",
+              "public": true,
+              "files": {
+                "api-data.txt": {
+                  "content": "'"$DATA"'"
+                }
+              }
+            }')
+          
+          # Extract URLs
+          RAW_URL=$(echo "$GIST_RESPONSE" | jq -r '.files."api-data.txt".raw_url')
+          GIST_URL=$(echo "$GIST_RESPONSE" | jq -r '.html_url')
+          GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id')
+          
+          echo ""
+          echo "✅ Gist created successfully!"
+          echo "==========================================="
+          echo "📄 Gist URL: $GIST_URL"
+          echo "🔗 Raw URL (for API access): $RAW_URL"
+          echo "🆔 Gist ID: $GIST_ID"
+          echo "==========================================="
+          echo ""
+          echo "📋 Testing raw access:"
+          echo "----------------------------------------"
+          sleep 2  # Wait for gist to be available
+          curl -s "$RAW_URL"
+          echo ""
+          echo "----------------------------------------"
+          
+          echo ""
+          echo "💡 Usage from external server:"
+          echo "curl -s \"$RAW_URL\""
