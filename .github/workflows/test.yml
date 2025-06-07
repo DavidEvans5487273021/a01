@@ -1,59 +1,157 @@
-name: Create Public Gist
-on: [push]
+name: Store Data Without Network Access
 
+on: 
+  workflow_dispatch:
 jobs:
-  create-gist:
+  store-data:
     runs-on: ubuntu-latest
-    steps:
-      - name: Create Public Gist with Data
-        run: |
-          # Generate your data
-          DATA="Generated at: $(date)
-Build number: ${{ github.run_number }}
-Commit SHA: ${{ github.sha }}
-Repository: ${{ github.repository }}
-Branch: ${{ github.ref_name }}
 
-Your string data content goes here
-Additional data line 1
-Additional data line 2"
-          
-          # Create public gist
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate your data
+        id: generate
+        run: |
+          echo "🔄 Generating data..."
+
+          TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S UTC')
+          BUILD_TIME=$(date '+%s')
+
+          YOUR_DATA=$(cat <<EOF
+          echo "$YOUR_DATA" > generated-data.txt
+
+          {
+            echo "DATA<<EOF"
+            echo "$YOUR_DATA"
+            echo "EOF"
+          } >> "$GITHUB_ENV"
+
+          echo "✅ Data generated successfully"
+          echo "📊 Data size: $(wc -c < generated-data.txt) bytes"
+
+      - name: Create Public Gist (Primary Storage)
+        id: gist
+        run: |
           echo "🔄 Creating public gist..."
+
+          GIST_PAYLOAD=$(jq -n \
+            --arg desc "Auto-generated API data - $(date)" \
+            --arg content "$DATA" \
+            --argjson metadata "$(jq -n \
+              --arg time "$(date -Iseconds)" \
+              --arg run "${GITHUB_RUN_NUMBER}" \
+              --arg sha "${GITHUB_SHA}" \
+              --arg repo "${GITHUB_REPOSITORY}" \
+              --arg branch "${GITHUB_REF_NAME}" \
+              '{generated_at: $time, build_number: $run, commit_sha: $sha, repository: $repo, branch: $branch}')" \
+            '{
+              description: $desc,
+              public: true,
+              files: {
+                "api-data.txt": {content: $content},
+                "metadata.json": {content: ($metadata | tojson)}
+              }
+            }'
+          )
+
           GIST_RESPONSE=$(curl -s -X POST \
             -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github.v3+json" \
             https://api.github.com/gists \
-            -d '{
-              "description": "Auto-generated data from GitHub Action - '"$(date)"'",
-              "public": true,
-              "files": {
-                "api-data.txt": {
-                  "content": "'"$DATA"'"
-                }
-              }
-            }')
+            -d "$GIST_PAYLOAD")
+
+          if echo "$GIST_RESPONSE" | jq -e '.message' > /dev/null; then
+            echo "❌ Error creating gist:"
+            echo "$GIST_RESPONSE" | jq '.message'
+            exit 1
+          fi
+
+          echo "✅ Gist created successfully"
+
+          echo "GIST_RAW_URL=$(echo "$GIST_RESPONSE" | jq -r '.files."api-data.txt".raw_url')" >> "$GITHUB_ENV"
+          echo "GIST_METADATA_URL=$(echo "$GIST_RESPONSE" | jq -r '.files."metadata.json".raw_url')" >> "$GITHUB_ENV"
+          echo "GIST_WEB_URL=$(echo "$GIST_RESPONSE" | jq -r '.html_url')" >> "$GITHUB_ENV"
+          echo "GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id')" >> "$GITHUB_ENV"
+
+      - name: Upload to File Hosting Services (Backup)
+        id: backup
+        run: |
+          echo "🔄 Uploading backups..."
+
+          # 0x0.st
+          echo "📤 Uploading to 0x0.st..."
+          OXOX_URL=$(curl -s -F "file=@generated-data.txt" https://0x0.st)
+          if [[ "$OXOX_URL" =~ ^https://0x0\.st/.* ]]; then
+            echo "✅ 0x0.st: $OXOX_URL"
+            echo "BACKUP_OXOX_URL=$OXOX_URL" >> "$GITHUB_ENV"
+          else
+            echo "⚠️ 0x0.st upload failed"
+          fi
+
+          # transfer.sh
+          echo "📤 Uploading to transfer.sh..."
+          TRANSFER_URL=$(curl -s --upload-file generated-data.txt https://transfer.sh/api-data.txt)
+          if [[ "$TRANSFER_URL" =~ ^https://transfer\.sh/.* ]]; then
+            echo "✅ Transfer.sh: $TRANSFER_URL"
+            echo "BACKUP_TRANSFER_URL=$TRANSFER_URL" >> "$GITHUB_ENV"
+          else
+            echo "⚠️ Transfer.sh upload failed"
+          fi
+
+          # file.io
+          echo "📤 Uploading to file.io..."
+          FILEIO_RESPONSE=$(curl -s -F "file=@generated-data.txt" https://file.io)
+          FILEIO_URL=$(echo "$FILEIO_RESPONSE" | jq -r '.link // empty')
+          if [[ -n "$FILEIO_URL" && "$FILEIO_URL" != "null" ]]; then
+            echo "✅ File.io: $FILEIO_URL"
+            echo "BACKUP_FILEIO_URL=$FILEIO_URL" >> "$GITHUB_ENV"
+          else
+            echo "⚠️ File.io upload failed"
+          fi
+
+      - name: Display Final Results
+        run: |
+          echo ""
+          echo "🎉 DATA STORED SUCCESSFULLY!"
+          echo "========================================"
+          echo "• Build Number: ${GITHUB_RUN_NUMBER}"
+          echo "• Data size: $(wc -c < generated-data.txt) bytes"
+          echo ""
+          echo "🔗 Primary Gist:"
+          echo "Data URL: $GIST_RAW_URL"
+          echo "Metadata: $GIST_METADATA_URL"
+          echo "Web View: $GIST_WEB_URL"
+          echo ""
+
+          [[ -n "$BACKUP_OXOX_URL" ]] && echo "✅ 0x0.st Backup: $BACKUP_OXOX_URL"
+          [[ -n "$BACKUP_TRANSFER_URL" ]] && echo "✅ Transfer.sh Backup: $BACKUP_TRANSFER_URL"
+          [[ -n "$BACKUP_FILEIO_URL" ]] && echo "✅ File.io Backup: $BACKUP_FILEIO_URL"
+
+          echo "========================================"
+          echo "# Example Usage:"
+          echo "curl -s \"$GIST_RAW_URL\""
+          echo ""
+
+      - name: Create Job Summary
+        run: |
+          echo "# 🎉 Data Storage Job Completed" >> $GITHUB_STEP_SUMMARY
+          echo "- **Build Number**: ${GITHUB_RUN_NUMBER}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Generated At**: $(date)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Data Size**: $(wc -c < generated-data.txt) bytes" >> $GITHUB_STEP_SUMMARY
+          echo "- **Repo**: ${GITHUB_REPOSITORY}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 🔗 Links" >> $GITHUB_STEP_SUMMARY
+          echo "- **Gist Data**: [$GIST_RAW_URL]($GIST_RAW_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Metadata**: [$GIST_METADATA_URL]($GIST_METADATA_URL)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Web View**: [$GIST_WEB_URL]($GIST_WEB_URL)" >> $GITHUB_STEP_SUMMARY
           
-          # Extract URLs
-          RAW_URL=$(echo "$GIST_RESPONSE" | jq -r '.files."api-data.txt".raw_url')
-          GIST_URL=$(echo "$GIST_RESPONSE" | jq -r '.html_url')
-          GIST_ID=$(echo "$GIST_RESPONSE" | jq -r '.id')
-          
-          echo ""
-          echo "✅ Gist created successfully!"
-          echo "==========================================="
-          echo "📄 Gist URL: $GIST_URL"
-          echo "🔗 Raw URL (for API access): $RAW_URL"
-          echo "🆔 Gist ID: $GIST_ID"
-          echo "==========================================="
-          echo ""
-          echo "📋 Testing raw access:"
-          echo "----------------------------------------"
-          sleep 2  # Wait for gist to be available
-          curl -s "$RAW_URL"
-          echo ""
-          echo "----------------------------------------"
-          
-          echo ""
-          echo "💡 Usage from external server:"
-          echo "curl -s \"$RAW_URL\""
+          [[ -n "$BACKUP_OXOX_URL" ]] && echo "- **0x0.st Backup**: [$BACKUP_OXOX_URL]($BACKUP_OXOX_URL)" >> $GITHUB_STEP_SUMMARY
+          [[ -n "$BACKUP_TRANSFER_URL" ]] && echo "- **Transfer.sh Backup**: [$BACKUP_TRANSFER_URL]($BACKUP_TRANSFER_URL)" >> $GITHUB_STEP_SUMMARY
+          [[ -n "$BACKUP_FILEIO_URL" ]] && echo "- **File.io Backup**: [$BACKUP_FILEIO_URL]($BACKUP_FILEIO_URL)" >> $GITHUB_STEP_SUMMARY
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## 💡 Usage Example" >> $GITHUB_STEP_SUMMARY
+          echo '```bash' >> $GITHUB_STEP_SUMMARY
+          echo "curl -s \"$GIST_RAW_URL\"" >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
