@@ -1,6 +1,6 @@
 name: Store Public Data
-on: [push]
-
+on:
+    workflow_dispatch:
 jobs:
   store-data:
     runs-on: ubuntu-latest
