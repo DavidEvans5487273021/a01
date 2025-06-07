@@ -21,12 +21,6 @@ jobs:
           YOUR_DATA=$(cat <<EOF
           echo "$YOUR_DATA" > generated-data.txt
 
-          {
-            echo "DATA<<EOF"
-            echo "$YOUR_DATA"
-            echo "EOF"
-          } >> "$GITHUB_ENV"
-
           echo "✅ Data generated successfully"
           echo "📊 Data size: $(wc -c < generated-data.txt) bytes"
 
