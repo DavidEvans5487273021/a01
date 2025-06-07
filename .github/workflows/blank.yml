@@ -1,18 +1,33 @@
-name: Infinite wget loop (with 1-minute interval)
+name: Infinite wget loop and commit (every 10s)
 
 on:
-  workflow_dispatch:  # Bắt đầu thủ công
+  workflow_dispatch:  # Chạy thủ công
 
 jobs:
   infinite_wget:
     runs-on: ubuntu-latest
 
     steps:
-      - name: wget every minute
+      - name: Checkout repo
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Start infinite wget + commit loop
         run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          count=1
           while true; do
-            echo "[$(date)] Downloading file..."
-            wget https://github.com/DavidEvans548727302/a01/blob/main/test.txt -O downloaded.txt
+            echo "[$(date)] Downloading file... (iteration $count)"
+            wget -O downloaded.txt https://github.com/DavidEvans548727302/a01/blob/main/test.txt
+
+            git add downloaded.txt
+            git commit -m "Auto update downloaded.txt (iteration $count)" || echo "No changes to commit"
+            git push
+
             echo "Sleeping for 10 seconds..."
             sleep 10
+            count=$((count+1))
           done
