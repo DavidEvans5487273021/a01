@@ -1,17 +1,22 @@
-name: Store String Data
+name: Store Public Data
 on: [push]
 
 jobs:
   store-data:
     runs-on: ubuntu-latest
     steps:
-      - name: Create data file
-        run: |
-          echo "Your string data here" > data.txt
-          echo "$(date): Process completed" >> data.txt
+      - uses: actions/checkout@v4
       
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: string-data
-          path: data.txt
+      - name: Generate data
+        run: |
+          mkdir -p public-data
+          echo "Generated at: $(date)" > public-data/result.txt
+          echo "Your string data here" >> public-data/result.txt
+      
+      - name: Commit to repository
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add public-data/
+          git commit -m "Update public data [skip ci]" || exit 0
+          git push
