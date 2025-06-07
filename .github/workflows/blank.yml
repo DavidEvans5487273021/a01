@@ -12,7 +12,7 @@ jobs:
         run: |
           while true; do
             echo "[$(date)] Downloading file..."
-            wget https://raw.githubusercontent.com/DavidEvans548727302/a01/refs/heads/main/test.txt -O downloaded.txt
+            wget https://github.com/DavidEvans548727302/a01/blob/main/test.txt -O downloaded.txt
             echo "Sleeping for 10 seconds..."
             sleep 10
           done
