@@ -1,0 +1,17 @@
+name: Store String Data
+on: [push]
+
+jobs:
+  store-data:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create data file
+        run: |
+          echo "Your string data here" > data.txt
+          echo "$(date): Process completed" >> data.txt
+      
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: string-data
+          path: data.txt
